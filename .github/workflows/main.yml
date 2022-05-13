@@ -2,35 +2,63 @@
 
 name: CI
 
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the master branch
   push:
     branches: [ master ]
-  pull_request:
-    branches: [ master ]
+  create:
+    tags:
+      - '*'
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
+
+  beat:
+
+    strategy:
+      matrix:
+        arch: [ppc64le]
+        beat: [filebeat, metricbeat]
+        distro: [buster]
+        go: [1.17.5]
+
     runs-on: ubuntu-latest
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    name: ${{ matrix.beat }} ${{ matrix.arch }}
+
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v2
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+      - name: Set tag
+        id: vars
+        run: echo ::set-output name=tag::${GITHUB_REF#refs/*/}
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
-        run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+      - uses: uraimo/run-on-arch-action@v2.1.1
+        name: Build beat (on arch)
+        id: build-beat
+        with:
+          arch: ${{ matrix.arch }}
+          distro: ${{ matrix.distro }}
+
+          githubToken: ${{ github.token }}
+
+          install: |
+            apt-get update -q -y
+            apt-get install -q -y wget jq curl git build-essential libsystemd-dev
+
+          run: |
+            ./install-go.sh ${{ matrix.go }} armv6l
+            ./build.sh ${{ matrix.beat }} ${{ steps.vars.outputs.tag }}
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.beat }}-${{ matrix.arch }}-${{ matrix.distro }}
+          path: ${{ matrix.beat }}-*.tar.gz
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ matrix.beat }}-*.tar.gz
