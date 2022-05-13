@@ -49,7 +49,7 @@ jobs:
             apt-get install -q -y wget jq curl git build-essential libsystemd-dev
 
           run: |
-            ./install-go.sh ${{ matrix.go }} armv6l
+            ./install-go.sh ${{ matrix.go }} ppc64le
             ./build.sh ${{ matrix.beat }} ${{ steps.vars.outputs.tag }}
 
       - uses: actions/upload-artifact@v2
